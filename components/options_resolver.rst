@@ -634,6 +634,93 @@ let you find out which options are defined::
         }
     }
 
+Многоуровневость
+~~~~~~~~~~~~~~~~~~
+
+OptionResolver поддерживает вложенность. Для того, чтобы можно было проверять многоуровневые массивы, нужно, в качестве вложенного массива передать экземпляр класса `OptionResolverNested`:
+
+    // ...
+    class Mailer
+    {
+        // ...
+        public function configureOptions(OptionsResolver $resolver)
+        {
+            // ...
+            $resolver->setDefaults(array(
+                'encryption' => null,
+                'recipient' => new OptionResolverNested([
+                    'name' => 'John',
+                    'mail' => 'john@example.com'
+                ]),
+                'host' => 'example.org',
+            ));
+        }
+    }
+    
+.. note::
+
+    OptionResolverNested наследуется от \ArrayObject. В случае, если в качестве вложенного элемента передать массив, то проверка будет идти только на ключ, и на то, что элемент является массивом. Данные внутри массива проверены не будут.
+    
+Для получения доступа к элементам внутри OptionResolverNested вам необходимо получать данные так же как и в многоуровневых массивах
+
+    // ...
+    class Mailer
+    {
+        // ...
+        public function configureOptions(OptionsResolver $resolver)
+        {
+            // ...
+            $resolver->setDefaults(array(
+                'encryption' => function (Options $options) {
+                    $options['recipient']['name']; // John
+                    $options['recipient']['mail']; // john@example.com
+                    $options['host']; // example.org
+                    
+                    return true;
+                },
+                'recipient' => new OptionResolverNested([
+                    'name' => 'John',
+                    'mail' => 'john@example.com'
+                ]),
+                'host' => 'example.org',
+            ));
+        }
+    }
+
+Для доступа к родительским элементам из вложенных OptionResolverNested необходимо изменить аргументы замыкания на `function(ResolveData $data)`. В данном случае в виде $data будет полностью собранный массив конфигурации начиная от корня
+
+    // ...
+    class Mailer
+    {
+        // ...
+        public function configureOptions(OptionsResolver $resolver)
+        {
+            // ...
+            $resolver->setDefaults(array(
+                'encryption' => null,
+                'default_mail' => 'default@example.com',
+                'recipient' => new OptionResolverNested([
+                    'name' => 'John',
+                    'mail' => function(ResolveData $data){
+                        $data['encryption']; // null
+                        $data['default_mail']; // default@example.com
+                        $data['recipient']['name']; // John
+                        $data['recipient']['mail']; // \Closure
+                        
+                        return 'john@example.com';
+                    },
+                ]),
+                'host' => 'example.org',
+            ));
+        }
+    }
+
+.. caution::
+
+    Шаг с передачей в замыкание `ResolveData $data` происходит самым последним. Перед ним идут нормализаторы, обработка ленивых загрузок и прочее. 
+    В случае, если данное замыкание ссылается на само себя, то исключение выброшено не будет. Замыкание не будет обработно и вернется в таком виде, как и было объявлено.
+
+
 Performance Tweaks
 ~~~~~~~~~~~~~~~~~~
 
